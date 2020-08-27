@@ -230,6 +230,16 @@ dev/atkbdc/atkbdc.c		optional	atkbdc
 dev/atkbdc/atkbdc_isa.c		optional	atkbdc isa
 dev/atkbdc/atkbdc_subr.c	optional	atkbdc
 dev/atkbdc/psm.c		optional	psm atkbdc
+dev/axgbe/if_axgbe_pci.c	optional        axgbe pci inet inet6
+dev/axgbe/xgbe-desc.c		optional        axgbe pci inet inet6
+dev/axgbe/xgbe-dev.c		optional        axgbe pci inet inet6
+dev/axgbe/xgbe-drv.c		optional        axgbe pci inet inet6
+dev/axgbe/xgbe-i2c.c		optional        axgbe pci inet inet6
+dev/axgbe/xgbe-mdio.c		optional        axgbe pci inet inet6
+dev/axgbe/xgbe-phy-v2.c	optional        axgbe pci inet inet6
+dev/axgbe/xgbe-sysctl.c	optional        axgbe pci inet inet6
+dev/axgbe/xgbe-txrx.c		optional        axgbe pci inet inet6
+dev/axgbe/xgbe_osdep.c		optional        axgbe pci inet inet6
 dev/bxe/bxe.c                   optional	bxe pci
 dev/bxe/bxe_stats.c             optional	bxe pci
 dev/bxe/bxe_debug.c             optional	bxe pci
