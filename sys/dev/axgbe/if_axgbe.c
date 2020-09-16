@@ -1,8 +1,6 @@
 /*-
- * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
- *
  * Copyright (c) 2016,2017 SoftIron Inc.
- * Copyright (c) 2020 Advanced Micro Devices, Inc.
+ * All rights reserved.
  *
  * This software was developed by Andrew Turner under
  * the sponsorship of SoftIron Inc.
@@ -116,14 +114,6 @@ static struct resource_spec mac_spec[] = {
 	{ -1, 0 }
 };
 
-static struct xgbe_version_data xgbe_v1 = {
-	.init_function_ptrs_phy_impl    = xgbe_init_function_ptrs_phy_v1,
-	.xpcs_access                    = XGBE_XPCS_ACCESS_V1,
-	.tx_max_fifo_size               = 81920,
-	.rx_max_fifo_size               = 81920,
-	.tx_tstamp_workaround           = 1,
-};
-
 MALLOC_DEFINE(M_AXGBE, "axgbe", "axgbe data");
 
 static void
@@ -145,13 +135,14 @@ axgbe_ioctl(struct ifnet *ifp, unsigned long command, caddr_t data)
 {
 	struct axgbe_softc *sc = ifp->if_softc;
 	struct ifreq *ifr = (struct ifreq *)data;
-	int error = 0;
+	int error;
 
 	switch(command) {
 	case SIOCSIFMTU:
 		if (ifr->ifr_mtu < ETHERMIN || ifr->ifr_mtu > ETHERMTU_JUMBO)
 			error = EINVAL;
-		/* TODO - change it to iflib way */ 
+		else
+			error = xgbe_change_mtu(ifp, ifr->ifr_mtu);
 		break;
 	case SIOCSIFFLAGS:
 		error = 0;
@@ -316,7 +307,6 @@ axgbe_attach(device_t dev)
 
 	sc = device_get_softc(dev);
 
-	sc->prv.vdata = &xgbe_v1;
 	node = ofw_bus_get_node(dev);
 	if (OF_getencprop(node, "phy-handle", &phy_handle,
 	    sizeof(phy_handle)) <= 0) {
@@ -401,7 +391,6 @@ axgbe_attach(device_t dev)
 	sc->prv.phy.advertising = ADVERTISED_10000baseKR_Full |
 	    ADVERTISED_1000baseKX_Full;
 
-
 	/*
 	 * Read the needed properties from the phy node.
 	 */
@@ -477,11 +466,13 @@ axgbe_attach(device_t dev)
 	/* Check if the NIC is DMA coherent */
 	sc->prv.coherent = OF_hasprop(node, "dma-coherent");
 	if (sc->prv.coherent) {
-		sc->prv.arcr = XGBE_DMA_OS_ARCR;
-		sc->prv.awcr = XGBE_DMA_OS_AWCR;
+		sc->prv.axdomain = XGBE_DMA_OS_AXDOMAIN;
+		sc->prv.arcache = XGBE_DMA_OS_ARCACHE;
+		sc->prv.awcache = XGBE_DMA_OS_AWCACHE;
 	} else {
-		sc->prv.arcr = XGBE_DMA_SYS_ARCR;
-		sc->prv.awcr = XGBE_DMA_SYS_AWCR;
+		sc->prv.axdomain = XGBE_DMA_SYS_AXDOMAIN;
+		sc->prv.arcache = XGBE_DMA_SYS_ARCACHE;
+		sc->prv.awcache = XGBE_DMA_SYS_AWCACHE;
 	}
 
 	/* Create the lock & workqueues */
@@ -495,7 +486,6 @@ axgbe_attach(device_t dev)
 	xgbe_init_function_ptrs_phy(&sc->prv.phy_if);
 	xgbe_init_function_ptrs_dev(&sc->prv.hw_if);
 	xgbe_init_function_ptrs_desc(&sc->prv.desc_if);
-	sc->prv.vdata->init_function_ptrs_phy_impl(&sc->prv.phy_if);
 
 	/* Reset the hardware */
 	sc->prv.hw_if.exit(&sc->prv);
@@ -504,14 +494,16 @@ axgbe_attach(device_t dev)
 	xgbe_get_all_hw_features(&sc->prv);
 
 	/* Set default values */
+	sc->prv.pblx8 = DMA_PBL_X8_ENABLE;
 	sc->prv.tx_desc_count = XGBE_TX_DESC_CNT;
 	sc->prv.tx_sf_mode = MTL_TSF_ENABLE;
 	sc->prv.tx_threshold = MTL_TX_THRESHOLD_64;
+	sc->prv.tx_pbl = DMA_PBL_16;
 	sc->prv.tx_osp_mode = DMA_OSP_ENABLE;
 	sc->prv.rx_desc_count = XGBE_RX_DESC_CNT;
 	sc->prv.rx_sf_mode = MTL_RSF_DISABLE;
 	sc->prv.rx_threshold = MTL_RX_THRESHOLD_64;
-	sc->prv.pbl = DMA_PBL_128;
+	sc->prv.rx_pbl = DMA_PBL_16;
 	sc->prv.pause_autoneg = 1;
 	sc->prv.tx_pause = 1;
 	sc->prv.rx_pause = 1;
@@ -536,7 +528,7 @@ axgbe_attach(device_t dev)
         ifp->if_softc = sc;
 	ifp->if_flags = IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST;
 	ifp->if_ioctl = axgbe_ioctl;
-	/* TODO - change it to iflib way */ 
+	ifp->if_transmit = xgbe_xmit;
 	ifp->if_qflush = axgbe_qflush;
 	ifp->if_get_counter = axgbe_get_counter;
 
@@ -558,7 +550,11 @@ axgbe_attach(device_t dev)
 
 	set_bit(XGBE_DOWN, &sc->prv.dev_state);
 
-	/* TODO - change it to iflib way */
+	if (xgbe_open(ifp) < 0) {
+		device_printf(dev, "ndo_open failed\n");
+		return (ENXIO);
+	}
+
 	return (0);
 }
 
@@ -566,7 +562,6 @@ static device_method_t axgbe_methods[] = {
 	/* Device interface */
 	DEVMETHOD(device_probe,		axgbe_probe),
 	DEVMETHOD(device_attach,	axgbe_attach),
-
 	{ 0, 0 }
 };
 
@@ -611,7 +606,6 @@ static device_method_t axgbephy_methods[] = {
 	/* Device interface */
 	DEVMETHOD(device_probe,		axgbephy_probe),
 	DEVMETHOD(device_attach,	axgbephy_attach),
-
 	{ 0, 0 }
 };
 
