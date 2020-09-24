@@ -219,6 +219,26 @@ dev/agp/agp_amd64.c		optional	agp
 dev/agp/agp_i810.c		optional	agp
 dev/agp/agp_via.c		optional	agp
 dev/amdgpio/amdgpio.c		optional	amdgpio
+dev/axgbe/if_axgbe_pci.c	optional	axp pci \
+	compile-with "${NORMAL_C} -I$S/dev/axgbe"
+dev/axgbe/xgbe-desc.c		optional	axp pci \
+	compile-with "${NORMAL_C} -I$S/dev/axgbe"
+dev/axgbe/xgbe-dev.c		optional	axp pci \
+	compile-with "${NORMAL_C} -I$S/dev/axgbe"
+dev/axgbe/xgbe-drv.c		optional	axp pci \
+	compile-with "${NORMAL_C} -I$S/dev/axgbe"
+dev/axgbe/xgbe-i2c.c		optional	axp pci \
+	compile-with "${NORMAL_C} -I$S/dev/axgbe"
+dev/axgbe/xgbe-mdio.c		optional	axp pci \
+	compile-with "${NORMAL_C} -I$S/dev/axgbe"
+dev/axgbe/xgbe-phy-v2.c		optional	axp pci \
+	compile-with "${NORMAL_C} -I$S/dev/axgbe"
+dev/axgbe/xgbe-sysctl.c		optional	axp pci \
+	compile-with "${NORMAL_C} -I$S/dev/axgbe"
+dev/axgbe/xgbe-txrx.c		optional	axp pci \
+	compile-with "${NORMAL_C} -I$S/dev/axgbe"
+dev/axgbe/xgbe_osdep.c		optional	axp pci \
+	compile-with "${NORMAL_C} -I$S/dev/axgbe"
 dev/amdsbwd/amdsbwd.c		optional	amdsbwd
 dev/amdsmn/amdsmn.c		optional	amdsmn | amdtemp
 dev/amdtemp/amdtemp.c		optional	amdtemp
