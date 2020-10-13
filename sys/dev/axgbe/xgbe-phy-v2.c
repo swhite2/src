@@ -119,6 +119,7 @@ __FBSDID("$FreeBSD$");
 
 struct mtx xgbe_phy_comm_lock;
 
+
 #define XGBE_PHY_PORT_SPEED_100		BIT(0)
 #define XGBE_PHY_PORT_SPEED_1000	BIT(1)
 #define XGBE_PHY_PORT_SPEED_2500	BIT(2)
@@ -380,6 +381,7 @@ struct xgbe_phy_data {
 };
 
 static enum xgbe_an_mode xgbe_phy_an_mode(struct xgbe_prv_data *pdata);
+static int xgbe_phy_reset(struct xgbe_prv_data *pdata);
 
 static int
 xgbe_phy_i2c_xfer(struct xgbe_prv_data *pdata, struct xgbe_i2c_op *i2c_op)
@@ -2039,7 +2041,7 @@ xgbe_phy_perform_ratechange(struct xgbe_prv_data *pdata, unsigned int cmd,
 	wait = XGBE_RATECHANGE_COUNT;
 	while (wait--) {
 		if (!XP_IOREAD_BITS(pdata, XP_DRIVER_INT_RO, STATUS)) {
-			axgbe_printf(3, "%s: Rate change done\n", __func__);
+			axgbe_printf(1, "%s: Rate change done\n", __func__);
 			return;
 		}
 
@@ -2055,7 +2057,7 @@ xgbe_phy_rrc(struct xgbe_prv_data *pdata)
 	/* Receiver Reset Cycle */
 	xgbe_phy_perform_ratechange(pdata, 5, 0);
 
-	axgbe_printf(3, "receiver reset complete\n");
+	axgbe_printf(0, "receiver reset complete\n");
 }
 
 static void
@@ -2824,6 +2826,7 @@ xgbe_phy_link_status(struct xgbe_prv_data *pdata, int *an_restart)
 	unsigned int reg;
 	int ret;
 
+
 	*an_restart = 0;
 
 	if (phy_data->port_mode == XGBE_PORT_MODE_SFP) {
@@ -2871,15 +2874,20 @@ xgbe_phy_link_status(struct xgbe_prv_data *pdata, int *an_restart)
 	reg = XMDIO_READ(pdata, MDIO_MMD_PCS, MDIO_STAT1);
 	reg = XMDIO_READ(pdata, MDIO_MMD_PCS, MDIO_STAT1);
 	axgbe_printf(1, "%s: link_status reg: 0x%x\n", __func__, reg);
-	if (reg & MDIO_STAT1_LSTATUS)
+	
+	if (reg & MDIO_STAT1_LSTATUS && !(reg & MDIO_STAT1_FSTATUS)) {
 		return (1);
+	} else {
+		axgbe_printf(1, "Fault condition in PCS receive link status check detected \n");
+	}
 
-	/* No link, attempt a receiver reset cycle */
+	/* No link, attempt a phy reset */
 	if (phy_data->rrc_count++ > XGBE_RRC_FREQUENCY) {
-		axgbe_printf(1, "ENTERED RRC: rrc_count: %d\n",
-		    phy_data->rrc_count);
-		phy_data->rrc_count = 0;
-		xgbe_phy_rrc(pdata);
+		axgbe_printf(1, "Resetting PHY..\n");
+		ret = xgbe_phy_reset(pdata);
+		if (ret)
+			return (ret);
+
 	}
 
 	return (0);
@@ -3453,6 +3461,8 @@ xgbe_phy_init(struct xgbe_prv_data *pdata)
 {
 	struct xgbe_phy_data *phy_data;
 	int ret;
+
+	/* rand = (random() % (20 - 10 + 1)) + 10; */
 
 	/* Initialize the global lock */
 	if (!mtx_initialized(&xgbe_phy_comm_lock))

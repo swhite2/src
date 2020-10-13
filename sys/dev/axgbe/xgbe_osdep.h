@@ -170,6 +170,7 @@ do {									\
 
 #define	MDIO_STAT1			1 /* MII_BMSR */
 #define	MDIO_STAT1_LSTATUS		0x0004 /* BMSR_LINK */
+#define MDIO_STAT1_FSTATUS		0x0080
 
 #define MDIO_DEVID1			2 /* MII_PHYSID1 */
 #define MDIO_DEVID2			3 /* MII_PHYSID2 */
