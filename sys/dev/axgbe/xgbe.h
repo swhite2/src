@@ -473,6 +473,9 @@ struct xgbe_ring_data {
 		unsigned int error;
 	} state;
 
+	/* Free list index associated with this descriptor */
+	int	fl_hdr_idx;
+	int	fl_data_idx;
 };
 
 struct xgbe_ring {

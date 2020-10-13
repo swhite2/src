@@ -1082,6 +1082,7 @@ iflib_netmap_rxsync(struct netmap_kring *kring, int flags)
 	u_int n;
 	u_int const lim = kring->nkr_num_slots - 1;
 	int force_update = (flags & NAF_FORCE_READ) || kring->nr_kflags & NKR_PENDINTR;
+	int i = 0;
 
 	if_ctx_t ctx = ifp->if_softc;
 	if_shared_ctx_t sctx = ctx->ifc_sctx;
@@ -1140,6 +1141,7 @@ iflib_netmap_rxsync(struct netmap_kring *kring, int flags)
 			ri.iri_qsidx = kring->ring_id;
 			ri.iri_ifp = ctx->ifc_ifp;
 			ri.iri_cidx = *cidxp;
+			i = 0;
 
 			error = ctx->isc_rxd_pkt_get(ctx->ifc_softc, &ri);
 			ring->slot[nm_i].len = error ? 0 : ri.iri_len - crclen;
@@ -1149,10 +1151,12 @@ iflib_netmap_rxsync(struct netmap_kring *kring, int flags)
 				while (*cidxp >= scctx->isc_nrxd[0])
 					*cidxp -= scctx->isc_nrxd[0];
 			}
+			do {
 			bus_dmamap_sync(fl->ifl_buf_tag,
 			    fl->ifl_sds.ifsd_map[nic_i], BUS_DMASYNC_POSTREAD);
 			nm_i = nm_next(nm_i, lim);
 			fl->ifl_cidx = nic_i = nm_next(nic_i, lim);
+			} while (++i < ri.iri_nfrags);
 		}
 		if (n) { /* update the state variables */
 			if (netmap_no_pendintr && !force_update) {

@@ -465,49 +465,47 @@ axgbe_isc_rxd_refill(void *arg, if_rxd_update_t iru)
 	unsigned int rx_frames = pdata->rx_frames;
 	unsigned int inte;
 	uint8_t	count = iru->iru_count;
-	int i, j;
+	int i;
 
 	axgbe_printf(1, "--> %s: rxq %d fl %d pidx %d count %d ring cur %d "
 	    "dirty %d\n", __func__, iru->iru_qsidx, iru->iru_flidx,
 	    iru->iru_pidx, count, ring->cur, ring->dirty);
 
-	for (i = iru->iru_pidx, j = 0 ; j < count ; i++, j++) {
+	for (i = 0; count > 0; i++, count--) {
 
-		if (i == XGBE_RX_DESC_CNT_DEFAULT)
-			i = 0;
-
-		rdata = XGBE_GET_DESC_DATA(ring, i);
+		rdata = XGBE_GET_DESC_DATA(ring, ring->dirty);
 		rdesc = rdata->rdesc;
 
 		if (__predict_false(XGMAC_GET_BITS_LE(rdesc->desc3,
 		    RX_NORMAL_DESC3, OWN))) {
-			axgbe_error("%s: refill clash, cur %d dirty %d index %d"
-			    "pidx %d\n", __func__, ring->cur, ring->dirty, j, i);
+			axgbe_error("%s: refill clash, cur %d dirty %d index %d\n",
+			    __func__, ring->cur, ring->dirty, i);
 		}
 
 		/* Assuming split header is enabled */
-		if (iru->iru_flidx == 0) {
+		if (rdata->fl_hdr_idx == -1) {
 
 			/* Fill header/buffer1 address */
 			rdesc->desc0 =
-			    cpu_to_le32(lower_32_bits(iru->iru_paddrs[j]));
+			    cpu_to_le32(lower_32_bits(iru->iru_paddrs[i]));
 			rdesc->desc1 =
-			    cpu_to_le32(upper_32_bits(iru->iru_paddrs[j]));
+			    cpu_to_le32(upper_32_bits(iru->iru_paddrs[i]));
+			rdata->fl_hdr_idx = iru->iru_idxs[i];
 		} else {
 
 			/* Fill data/buffer2 address */
 			rdesc->desc2 =
-			    cpu_to_le32(lower_32_bits(iru->iru_paddrs[j]));
+			    cpu_to_le32(lower_32_bits(iru->iru_paddrs[i]));
 			rdesc->desc3 =
-			    cpu_to_le32(upper_32_bits(iru->iru_paddrs[j]));
+			    cpu_to_le32(upper_32_bits(iru->iru_paddrs[i]));
+			rdata->fl_data_idx = iru->iru_idxs[i];
 
 			if (!rx_usecs && !rx_frames) {
 				/* No coalescing, interrupt for every descriptor */
 				inte = 1;
 			} else {
 				/* Set interrupt based on Rx frame coalescing setting */
-				if (rx_frames &&
-				    !(((ring->dirty + 1) &(ring->rdesc_count - 1)) % rx_frames))
+				if (rx_frames && !((ring->dirty + 1) % rx_frames))
 					inte = 1;
 				else
 					inte = 0;
@@ -518,6 +516,9 @@ axgbe_isc_rxd_refill(void *arg, if_rxd_update_t iru)
 			XGMAC_SET_BITS_LE(rdesc->desc3, RX_NORMAL_DESC3, OWN, 1);
 
 			wmb();
+
+			XGMAC_DMA_IOWRITE(channel, DMA_CH_RDTR_LO,
+			    lower_32_bits(rdata->rdata_paddr));
 
 			ring->dirty = ((ring->dirty + 1) & (ring->rdesc_count - 1));
 		}
@@ -534,18 +535,9 @@ axgbe_isc_rxd_flush(void *arg, uint16_t qsidx, uint8_t flidx, qidx_t pidx)
 	struct xgbe_prv_data	*pdata = &sc->pdata;
 	struct xgbe_channel     *channel = pdata->channel[qsidx];
 	struct xgbe_ring	*ring = channel->rx_ring;
-	struct xgbe_ring_data 	*rdata;
 
 	axgbe_printf(1, "--> %s: rxq %d fl %d pidx %d cur %d dirty %d\n",
 	    __func__, qsidx, flidx, pidx, ring->cur, ring->dirty);
-
-	if (flidx == 1) {
-
-		rdata = XGBE_GET_DESC_DATA(ring, pidx);
-
-		XGMAC_DMA_IOWRITE(channel, DMA_CH_RDTR_LO,
-		    lower_32_bits(rdata->rdata_paddr));
-	}
 
 	wmb();
 }
@@ -659,10 +651,10 @@ xgbe_rx_buf2_len(struct xgbe_prv_data *pdata, struct xgbe_ring_data *rdata,
 
 static inline void
 axgbe_add_frag(struct xgbe_prv_data *pdata, if_rxd_info_t ri, int idx, int len,
-    int pos, int flid)
+    int pos)
 {
-	axgbe_printf(2, "idx %d len %d pos %d flid %d\n", idx, len, pos, flid);
-	ri->iri_frags[pos].irf_flid = flid;
+	axgbe_printf(2, "idx %d len %d pos %d\n", idx, len, pos);
+	ri->iri_frags[pos].irf_flid = 0;
 	ri->iri_frags[pos].irf_idx = idx;
 	ri->iri_frags[pos].irf_len = len;
 }
@@ -678,7 +670,7 @@ axgbe_isc_rxd_pkt_get(void *arg, if_rxd_info_t ri)
 	struct xgbe_packet_data *packet = &ring->packet_data;
 	struct xgbe_ring_data	*rdata;
 	unsigned int last, context_next, context;
-	unsigned int buf1_len, buf2_len, max_len, len = 0, prev_cur;
+	unsigned int buf1_len, buf2_len, max_len, len = 0;
 	int i = 0;
 
 	axgbe_printf(2, "%s: rxq %d cidx %d cur %d dirty %d\n", __func__,
@@ -696,7 +688,6 @@ read_again:
 		}
 
 		rdata = XGBE_GET_DESC_DATA(ring, ring->cur);
-		prev_cur = ring->cur;
 		ring->cur = (ring->cur + 1) & (ring->rdesc_count - 1);
 
 		last = XGMAC_GET_BITS(packet->attributes, RX_PACKET_ATTRIBUTES,
@@ -722,10 +713,13 @@ read_again:
 			    "buf2 %d len %d frags %d error %d\n", __func__, last, context,
 			    context_next, buf1_len, buf2_len, len, i, packet->errors);
 
-		axgbe_add_frag(pdata, ri, prev_cur, buf1_len, i, 0);
+		axgbe_add_frag(pdata, ri, rdata->fl_hdr_idx, buf1_len, i);
 		i++;
-		axgbe_add_frag(pdata, ri, prev_cur, buf2_len, i, 1);
+		axgbe_add_frag(pdata, ri, rdata->fl_data_idx, buf2_len, i);
 		i++;
+
+		rdata->fl_hdr_idx = -1;
+		rdata->fl_data_idx = -1;
 
 		if (!last || context_next)
 			goto read_again;

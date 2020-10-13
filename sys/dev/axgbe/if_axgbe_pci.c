@@ -252,16 +252,16 @@ static struct if_shared_ctx axgbe_sctx_init = {
 	.isc_vendor_info = axgbe_vendor_info_array,
 	.isc_driver_version = XGBE_DRV_VERSION,
 
-	.isc_nrxd_min = {XGBE_RX_DESC_CNT_MIN, XGBE_RX_DESC_CNT_MIN},
-	.isc_nrxd_default = {XGBE_RX_DESC_CNT_DEFAULT, XGBE_RX_DESC_CNT_DEFAULT},
-	.isc_nrxd_max = {XGBE_RX_DESC_CNT_MAX, XGBE_RX_DESC_CNT_MAX},
+	.isc_nrxd_min = {XGBE_RX_DESC_CNT_MIN},
+	.isc_nrxd_default = {XGBE_RX_DESC_CNT_DEFAULT},
+	.isc_nrxd_max = {XGBE_RX_DESC_CNT_MAX},
 	.isc_ntxd_min = {XGBE_TX_DESC_CNT_MIN},
 	.isc_ntxd_default = {XGBE_TX_DESC_CNT_DEFAULT}, 
 	.isc_ntxd_max = {XGBE_TX_DESC_CNT_MAX},
 
-	.isc_nfl = 2,
+	.isc_nfl = 1,
 	.isc_ntxqs = 1,
-	.isc_nrxqs = 2,
+	.isc_nrxqs = 1,
 	.isc_flags = IFLIB_TSO_INIT_IP | IFLIB_NEED_SCRATCH |
 	    IFLIB_NEED_ZERO_CSUM | IFLIB_NEED_ETHER_PAD,
 };
@@ -1656,7 +1656,7 @@ axgbe_if_rx_queues_alloc(if_ctx_t ctx, caddr_t *va, uint64_t *pa, int nrxqs,
 
 	MPASS(scctx->isc_nrxqsets > 0);
 	MPASS(scctx->isc_nrxqsets == nrxqsets);
-	MPASS(nrxqs == 2);
+	MPASS(nrxqs == 1);
 
 	axgbe_printf(1, "%s: rxqsets %d/%d rxqs %d\n", __func__,
 	    scctx->isc_nrxqsets, nrxqsets, nrxqs);	

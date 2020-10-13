@@ -1152,7 +1152,7 @@ xgbe_phy_config_fixed(struct xgbe_prv_data *pdata)
 {
 	enum xgbe_mode mode;
 
-	axgbe_printf(2, "fixed PHY configuration\n");
+	axgbe_printf(0, "fixed PHY configuration\n");
 
 	/* Disable auto-negotiation */
 	xgbe_an_disable(pdata);
@@ -1303,7 +1303,7 @@ xgbe_check_link_timeout(struct xgbe_prv_data *pdata)
 
 	link_timeout = pdata->link_check + (XGBE_LINK_TIMEOUT * hz);
 	if ((int)(ticks - link_timeout) > 0) {
-		axgbe_printf(2, "AN link timeout\n");
+		axgbe_error("AN link timeout\n");
 		xgbe_phy_config_aneg(pdata);
 	}
 }
