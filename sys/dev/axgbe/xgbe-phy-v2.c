@@ -2886,7 +2886,7 @@ xgbe_phy_link_status(struct xgbe_prv_data *pdata, int *an_restart)
 		axgbe_printf(1, "Resetting PHY..\n");
 		ret = xgbe_phy_reset(pdata);
 		if (ret)
-			return (ret);
+			axgbe_error("Error resetting phy\n");
 
 	}
 
