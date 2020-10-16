@@ -214,6 +214,9 @@ enum xgbe_sfp_speed {
 #define XGBE_SFP_BASE_EXT_ID			1
 #define XGBE_SFP_EXT_ID_SFP			0x04
 
+#define XGBE_SFP_BASE_CV				2 /* Connector Values */
+#define XGBE_SFP_BASE_CV_CP				0x21 /* Copper pigtail */
+
 #define XGBE_SFP_BASE_10GBE_CC			3
 #define XGBE_SFP_BASE_10GBE_CC_SR		BIT(4)
 #define XGBE_SFP_BASE_10GBE_CC_LR		BIT(5)
@@ -735,7 +738,6 @@ xgbe_phy_sfp_phy_settings(struct xgbe_prv_data *pdata)
 
 	if (!phy_data->sfp_mod_absent && !phy_data->sfp_changed)
 		return;
-
 	XGBE_ZERO_SUP(&pdata->phy);
 
 	if (phy_data->sfp_mod_absent) {
@@ -1190,11 +1192,17 @@ xgbe_phy_sfp_parse_eeprom(struct xgbe_prv_data *pdata)
 
 	sfp_base = sfp_eeprom->base;
 
+	/*
+	 * Base ID = 0x03 = SFP or SFP+
+	 */
 	if (sfp_base[XGBE_SFP_BASE_ID] != XGBE_SFP_ID_SFP) {
 		axgbe_error("base id %d\n", sfp_base[XGBE_SFP_BASE_ID]);
 		return;
 	}
 
+	/*
+	 * Extended ID for transceiver - 0x04 = GBIC/SFP function 
+	 */
 	if (sfp_base[XGBE_SFP_BASE_EXT_ID] != XGBE_SFP_EXT_ID_SFP) {
 		axgbe_error("base id %d\n", sfp_base[XGBE_SFP_BASE_EXT_ID]);
 		return;
@@ -1212,7 +1220,16 @@ xgbe_phy_sfp_parse_eeprom(struct xgbe_prv_data *pdata)
 		phy_data->sfp_cable = XGBE_SFP_CABLE_ACTIVE;
 
 	/* Determine the type of SFP */
-	if (sfp_base[XGBE_SFP_BASE_10GBE_CC] & XGBE_SFP_BASE_10GBE_CC_SR)
+
+	/* 
+	 * For some reason, certain 10GBE SFP+ modules read as 1000BASE-CX, 
+	 * therefore, check whether the SFP module is Direct Attach at the beginning
+	 */
+	if ((sfp_base[XGBE_SFP_BASE_CV] & XGBE_SFP_BASE_CV_CP) && 
+		 (phy_data->sfp_cable == XGBE_SFP_CABLE_PASSIVE) &&
+		 xgbe_phy_sfp_bit_rate(sfp_eeprom, XGBE_SFP_SPEED_10000))
+		phy_data->sfp_base = XGBE_SFP_BASE_10000_CR;
+	else if (sfp_base[XGBE_SFP_BASE_10GBE_CC] & XGBE_SFP_BASE_10GBE_CC_SR)
 		phy_data->sfp_base = XGBE_SFP_BASE_10000_SR;
 	else if (sfp_base[XGBE_SFP_BASE_10GBE_CC] & XGBE_SFP_BASE_10GBE_CC_LR)
 		phy_data->sfp_base = XGBE_SFP_BASE_10000_LR;
@@ -1225,12 +1242,9 @@ xgbe_phy_sfp_parse_eeprom(struct xgbe_prv_data *pdata)
 	else if (sfp_base[XGBE_SFP_BASE_1GBE_CC] & XGBE_SFP_BASE_1GBE_CC_LX)
 		phy_data->sfp_base = XGBE_SFP_BASE_1000_LX;
 	else if (sfp_base[XGBE_SFP_BASE_1GBE_CC] & XGBE_SFP_BASE_1GBE_CC_CX)
-		phy_data->sfp_base = XGBE_SFP_BASE_1000_CX;
+		phy_data->sfp_base = XGBE_SFP_BASE_1000_CX; 
 	else if (sfp_base[XGBE_SFP_BASE_1GBE_CC] & XGBE_SFP_BASE_1GBE_CC_T)
 		phy_data->sfp_base = XGBE_SFP_BASE_1000_T;
-	else if ((phy_data->sfp_cable == XGBE_SFP_CABLE_PASSIVE) &&
-		 xgbe_phy_sfp_bit_rate(sfp_eeprom, XGBE_SFP_SPEED_10000))
-		phy_data->sfp_base = XGBE_SFP_BASE_10000_CR;
 
 	switch (phy_data->sfp_base) {
 	case XGBE_SFP_BASE_1000_T:
@@ -1451,7 +1465,6 @@ xgbe_phy_sfp_detect(struct xgbe_prv_data *pdata)
 		xgbe_phy_sfp_mod_absent(pdata);
 		goto put;
 	}
-
 	ret = xgbe_phy_sfp_read_eeprom(pdata);
 	if (ret) {
 		/* Treat any error as if there isn't an SFP plugged in */
@@ -1460,7 +1473,6 @@ xgbe_phy_sfp_detect(struct xgbe_prv_data *pdata)
 		xgbe_phy_sfp_mod_absent(pdata);
 		goto put;
 	}
-
 	xgbe_phy_sfp_parse_eeprom(pdata);
 
 	xgbe_phy_sfp_external_phy(pdata);
@@ -2826,7 +2838,6 @@ xgbe_phy_link_status(struct xgbe_prv_data *pdata, int *an_restart)
 	unsigned int reg;
 	int ret;
 
-
 	*an_restart = 0;
 
 	if (phy_data->port_mode == XGBE_PORT_MODE_SFP) {
@@ -2845,7 +2856,7 @@ xgbe_phy_link_status(struct xgbe_prv_data *pdata, int *an_restart)
 			    __func__, phy_data->sfp_mod_absent,
 			    phy_data->sfp_rx_los);
 			return (0);
-		}
+		} 
 	} else {
 		mii = device_get_softc(pdata->axgbe_miibus);
 		mii_tick(mii);
@@ -2883,11 +2894,11 @@ xgbe_phy_link_status(struct xgbe_prv_data *pdata, int *an_restart)
 
 	/* No link, attempt a phy reset */
 	if (phy_data->rrc_count++ > XGBE_RRC_FREQUENCY) {
+		phy_data->rrc_count = 0;
 		axgbe_printf(1, "Resetting PHY..\n");
 		ret = xgbe_phy_reset(pdata);
 		if (ret)
-			axgbe_error("Error resetting phy\n");
-
+			axgbe_error("Error resetting PHY\n");
 	}
 
 	return (0);
