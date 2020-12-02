@@ -2069,7 +2069,7 @@ xgbe_phy_rrc(struct xgbe_prv_data *pdata)
 	/* Receiver Reset Cycle */
 	xgbe_phy_perform_ratechange(pdata, 5, 0);
 
-	axgbe_printf(0, "receiver reset complete\n");
+	axgbe_printf(3, "receiver reset complete\n");
 }
 
 static void

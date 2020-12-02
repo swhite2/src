@@ -147,9 +147,6 @@ xgbe_wrapper_tx_descriptor_init(struct xgbe_prv_data *pdata)
 			rdata->rdesc = rdesc;
 			rdata->rdata_paddr = rdesc_paddr;
 
-			rdata->fl_hdr_idx = -1;
-			rdata->fl_data_idx = -1;
-
 			rdesc++;
 			rdesc_paddr += sizeof(struct xgbe_ring_desc);
 		}
@@ -193,9 +190,6 @@ xgbe_wrapper_rx_descriptor_init(struct xgbe_prv_data *pdata)
 
 			rdata->rdesc = rdesc;
 			rdata->rdata_paddr = rdesc_paddr;
-
-			rdata->fl_hdr_idx = -1;
-			rdata->fl_data_idx = -1;
 
 			rdesc++;
 			rdesc_paddr += sizeof(struct xgbe_ring_desc);

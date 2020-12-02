@@ -1614,6 +1614,11 @@ axgbe_sysctl_init(struct xgbe_prv_data *pdata)
 	SYSCTL_ADD_UINT(clist, top, OID_AUTO, "axgbe_debug_level", CTLFLAG_RWTUN,
 	    &pdata->debug_level, 0, "axgbe log level -- higher is verbose");
 
+	SYSCTL_ADD_UINT(clist, top, OID_AUTO, "sph_enabled",
+	    CTLFLAG_RDTUN, &pdata->sph_enabled, 0, 
+	    "shows if the split header feature is enabled - change this by setting " 
+	    	"dev.ax.sph_enable=\"{0|1}\" in /boot/loader.conf");
+
 	SYSCTL_ADD_PROC(clist, top, OID_AUTO, "xgmac_register",
 	    CTLTYPE_STRING | CTLFLAG_RWTUN | CTLFLAG_MPSAFE,
 	    pdata, 0, sysctl_xgmac_reg_addr_handler, "IU",

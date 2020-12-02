@@ -41,6 +41,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/rman.h>
 #include <sys/socket.h>
 #include <sys/sysctl.h>
+#include <sys/systm.h> /* getenv, setenv */
 
 #include <net/if.h>
 #include <net/if_media.h>
@@ -252,23 +253,78 @@ static struct if_shared_ctx axgbe_sctx_init = {
 	.isc_vendor_info = axgbe_vendor_info_array,
 	.isc_driver_version = XGBE_DRV_VERSION,
 
-	.isc_nrxd_min = {XGBE_RX_DESC_CNT_MIN},
-	.isc_nrxd_default = {XGBE_RX_DESC_CNT_DEFAULT},
-	.isc_nrxd_max = {XGBE_RX_DESC_CNT_MAX},
 	.isc_ntxd_min = {XGBE_TX_DESC_CNT_MIN},
 	.isc_ntxd_default = {XGBE_TX_DESC_CNT_DEFAULT}, 
 	.isc_ntxd_max = {XGBE_TX_DESC_CNT_MAX},
-
-	.isc_nfl = 1,
+	
 	.isc_ntxqs = 1,
-	.isc_nrxqs = 1,
 	.isc_flags = IFLIB_TSO_INIT_IP | IFLIB_NEED_SCRATCH |
 	    IFLIB_NEED_ZERO_CSUM | IFLIB_NEED_ETHER_PAD,
 };
 
+static int axgbe_sph_enabled;
+
 static void *
 axgbe_register(device_t dev)
 {
+	int axgbe_nfl;
+	int axgbe_nrxqs;
+  	int result;
+  	int error;
+  	char default_tun[] = "0";
+  	const char name[] = "dev.ax.sph_enable"; 
+	  
+	char *value = kern_getenv(&name[0]);
+  	if (value) {
+    		result = strtol(value, NULL, 10);
+    		if (result) {
+			axgbe_nfl = 2;
+			axgbe_nrxqs = 2;
+			axgbe_sph_enabled = 1;
+		} else {
+	      		axgbe_nfl = 1;
+	      		axgbe_nrxqs = 1;
+	      		axgbe_sph_enabled = 0;
+		}
+		freeenv(value);
+  	} else {
+	    /* 
+	     * No tunable found, generate one with default values 
+	     * @Rajesh: feel free to change the default as necessary
+	     * Note: only a reboot will reveal the new kenv
+	     */
+	    error = kern_setenv(&name[0], &default_tun[0]);
+	    if (error) {
+	      printf("Error setting tunable, using default driver values\n");
+	    }
+	    axgbe_nfl = 1;
+	    axgbe_nrxqs = 1;
+	    axgbe_sph_enabled = 0;
+	}
+  
+	axgbe_sctx_init.isc_nfl = axgbe_nfl;
+	axgbe_sctx_init.isc_nrxqs = axgbe_nrxqs;
+	if (axgbe_sph_enabled) {
+		axgbe_sctx_init.isc_nrxd_min[0] = XGBE_RX_DESC_CNT_MIN;
+		axgbe_sctx_init.isc_nrxd_min[1] = XGBE_RX_DESC_CNT_MIN;
+    
+		axgbe_sctx_init.isc_nrxd_default[0] = XGBE_RX_DESC_CNT_DEFAULT;
+		axgbe_sctx_init.isc_nrxd_default[1] = XGBE_RX_DESC_CNT_DEFAULT;
+    
+		axgbe_sctx_init.isc_nrxd_max[0] = XGBE_RX_DESC_CNT_MAX;
+		axgbe_sctx_init.isc_nrxd_max[1] = XGBE_RX_DESC_CNT_MAX;
+ 
+	} else {
+		axgbe_sctx_init.isc_nrxd_min[0] = XGBE_RX_DESC_CNT_MIN;
+    
+		axgbe_sctx_init.isc_nrxd_default[0] = XGBE_RX_DESC_CNT_DEFAULT;
+    
+		axgbe_sctx_init.isc_nrxd_max[0] = XGBE_RX_DESC_CNT_MAX;
+	}
+	
+	device_printf(dev, "Split header %s, using %d free list(s) and %d RX queue set(s)\n",
+		axgbe_sph_enabled ? "enabled" : "disabled", axgbe_nfl, axgbe_nrxqs);
+  
 	return (&axgbe_sctx_init);
 }
 
@@ -369,6 +425,7 @@ axgbe_if_attach_pre(if_ctx_t ctx)
 	sc->link_status = LINK_STATE_DOWN;
 	pdata = &sc->pdata;
 	pdata->netdev = iflib_get_ifp(ctx);
+ 
 
 	spin_lock_init(&pdata->xpcs_lock);
 
@@ -1292,6 +1349,9 @@ axgbe_if_attach_post(if_ctx_t ctx)
 	if_softc_ctx_t		scctx = sc->scctx;
 	int i, ret;
 
+ 	 /* set split header support based on tunable */
+  	pdata->sph_enabled = axgbe_sph_enabled; 
+
 	/* Initialize ECC timestamps */
         pdata->tx_sec_period = ticks;
         pdata->tx_ded_period = ticks;
@@ -1656,7 +1716,11 @@ axgbe_if_rx_queues_alloc(if_ctx_t ctx, caddr_t *va, uint64_t *pa, int nrxqs,
 
 	MPASS(scctx->isc_nrxqsets > 0);
 	MPASS(scctx->isc_nrxqsets == nrxqsets);
-	MPASS(nrxqs == 1);
+	if (pdata->sph_enabled) {
+		MPASS(nrxqs == 2);
+	} else {
+		MPASS(nrxqs == 1);
+	}
 
 	axgbe_printf(1, "%s: rxqsets %d/%d rxqs %d\n", __func__,
 	    scctx->isc_nrxqsets, nrxqsets, nrxqs);	

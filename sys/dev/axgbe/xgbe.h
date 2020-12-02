@@ -472,10 +472,6 @@ struct xgbe_ring_data {
 		unsigned int len;
 		unsigned int error;
 	} state;
-
-	/* Free list index associated with this descriptor */
-	int	fl_hdr_idx;
-	int	fl_data_idx;
 };
 
 struct xgbe_ring {
@@ -1301,6 +1297,7 @@ struct xgbe_prv_data {
 	uint64_t rx_coalesce_usecs;
 
 	unsigned int debug_level;
+	unsigned int sph_enabled; /* toggles the split header feature, requires complete restart */
 };
 
 struct axgbe_if_softc {

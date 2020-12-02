@@ -293,12 +293,14 @@ xgbe_config_tso_mode(struct xgbe_prv_data *pdata)
 {
 	unsigned int i;
 
+	int tso_enabled = (if_getcapenable(pdata->netdev) & IFCAP_TSO);
+
 	for (i = 0; i < pdata->channel_count; i++) {
 		if (!pdata->channel[i]->tx_ring)
 			break;
 
-		axgbe_printf(0, "Enabling TSO in channel %d\n", i);
-		XGMAC_DMA_IOWRITE_BITS(pdata->channel[i], DMA_CH_TCR, TSE, 1);
+		axgbe_printf(0, "TSO in channel %d %s\n", i, tso_enabled ? "enabled" : "disabled");
+		XGMAC_DMA_IOWRITE_BITS(pdata->channel[i], DMA_CH_TCR, TSE, tso_enabled ? 1 : 0);
 	}
 }
 
@@ -306,15 +308,29 @@ static void
 xgbe_config_sph_mode(struct xgbe_prv_data *pdata)
 {
 	unsigned int i;
+	axgbe_printf(0, "sph_enabled: %d", pdata->sph_enabled);
+	int sph_enable_flag = XGMAC_IOREAD_BITS(pdata, MAC_HWF1R, SPHEN);
+	axgbe_printf(0, "Split header feature enabled?: %d\n", sph_enable_flag);
 
 	for (i = 0; i < pdata->channel_count; i++) {
 		if (!pdata->channel[i]->rx_ring)
 			break;
+		if (pdata->sph_enabled) {
+			/* Enable split header feature */
+			XGMAC_DMA_IOWRITE_BITS(pdata->channel[i], DMA_CH_CR, SPH, 1);
+		} else {
+			/* Disable split header feature */
+			XGMAC_DMA_IOWRITE_BITS(pdata->channel[i], DMA_CH_CR, SPH, 0);
+		}
 
-		XGMAC_DMA_IOWRITE_BITS(pdata->channel[i], DMA_CH_CR, SPH, 1);
+		/* per-channel confirmation of SPH being disabled/enabled */
+		int val = XGMAC_DMA_IOREAD_BITS(pdata->channel[i], DMA_CH_CR, SPH);
+		axgbe_printf(0, "%s: SPH %s in channel %d - val:%d\n", __func__, (val ? "enabled" : "disabled"), i, val);
 	}
-
-	XGMAC_IOWRITE_BITS(pdata, MAC_RCR, HDSMS, XGBE_SPH_HDSMS_SIZE);
+	
+	if (pdata->sph_enabled) {
+		XGMAC_IOWRITE_BITS(pdata, MAC_RCR, HDSMS, XGBE_SPH_HDSMS_SIZE);
+	}
 }
 
 static int

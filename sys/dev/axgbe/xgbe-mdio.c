@@ -1152,7 +1152,7 @@ xgbe_phy_config_fixed(struct xgbe_prv_data *pdata)
 {
 	enum xgbe_mode mode;
 
-	axgbe_printf(0, "fixed PHY configuration\n");
+	axgbe_printf(2, "fixed PHY configuration\n");
 
 	/* Disable auto-negotiation */
 	xgbe_an_disable(pdata);
